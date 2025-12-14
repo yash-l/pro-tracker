@@ -1,0 +1,39 @@
+wQLite format 3@  NN.��
+ ��
+B
+ �%%�Gtableupdate_stateupdate_stateCREATE TABLE update_state (
+                    id integer primary key,
+                    pts integer,
+                    qts integer,
+                    date integer,
+                    seq integer
+                )�9!!�=tablesent_filessent_filesCREATE TABLE sent_files (
+                    md5_digest blob,
+                    file_size integer,
+                    type integer,
+                    id integer,
+                    hash integer,
+                    primary key(md5_digest, file_size, type)
+                )3G!indexsqlite_autoindex_sent_files_1sent_file�#�tableentitiesentitiesCREATE TABLE entities (
+                    id integer primary key,
+                    hash integer not null,
+                    username text,
+                    phone integer,
+                    name text,
+                    date integer
+                )�
+�gtablesessionssessionsCREATE TABLE sessions (
+                    dc_id integer primary key,
+                    server_address text,
+                    port integer,
+                    auth_key blob,
+                    takeout_id integer
+                )LqtableversionversionCREATE TABLE version (ver����'�nteger primary key)
+      91.108.56.146�uH�y�9�lq�
+                              �!=h@_]��̇�j��~�f��d������
+��%8���-�->�!T�NhC�3�J��IA̭)e�0�
+                               W��S��IEDU�����JB��RVn���BM    x&�B+L�(�cr��_��ܒ|�u"p�'�'b֗Ʃ��@#��5
+                                  �/ɖ�I��D~�'>����|f�4���!��?$�"\��
+�<m��&����y'��+;��-Յ�@�+917069316260i?Y+�襘))!�#:��N�joinhiderrobotJoin Hideri?X(����!%�(:�e��shiroya_8026.... ....i?_(����R'b���Gfkrushali_0208Krushalii?��|i?�����|.o�.������?Hassui?�
+��
+ Di?|
