@@ -12,10 +12,7 @@ from telethon.tl.types import UserStatusOnline
 from quart import Quart, render_template_string, request, redirect, session
 
 # --- CONFIGURATION ---
-# 1. SET YOUR WEB PASSWORD HERE
-ADMIN_PASSWORD = "admin"
-
-# 2. TELEGRAM KEYS
+ADMIN_PASSWORD = "admin"  # CHANGE THIS PASSWORD!
 API_ID = 9497762
 API_HASH = "272c77bf080e4a82846b8ff3dc3df0f4"
 
@@ -25,7 +22,7 @@ os.makedirs(PIC_FOLDER, exist_ok=True)
 logging.basicConfig(level=logging.INFO)
 
 # --- SETUP ---
-# Random session forces manual login every restart
+# Random session forces manual login every restart (Cloud Friendly)
 session_id = f"session_{secrets.token_hex(4)}"
 client = TelegramClient(session_id, API_ID, API_HASH)
 
@@ -77,7 +74,6 @@ async def tracker_loop():
                             await db.commit()
                         memory[uid] = stat
                     
-                    # Update Last Seen text
                     async with aiosqlite.connect(DB_FILE) as db:
                         await db.execute('UPDATE targets SET last_seen=? WHERE user_id=?', (now, uid))
                         await db.commit()
@@ -90,10 +86,8 @@ async def tracker_loop():
 @app.before_request
 def check_security():
     if request.path.startswith('/static'): return
-    # 1. Web Password Check
     if 'web_user' not in session and request.path not in ['/web_login', '/do_web_login']:
         return redirect('/web_login')
-    # 2. Telegram Login Check
     if 'web_user' in session and not state['logged_in']:
         if request.path not in ['/tg_login', '/send_code', '/verify_code', '/logout']:
             return redirect('/tg_login')
@@ -160,7 +154,8 @@ async def add():
         e = await client.get_entity(int(f['u']) if f['u'].isdigit() else f['u'])
         pic = await download_pic(e)
         async with aiosqlite.connect(DB_FILE) as db:
-            await db.execute('INSERT OR IGNORE INTO targets (user_id, name, status, last_seen, pic) VALUES (?,?,?,?,?)', (e.id, getattr(e,'username',''), 'Checking...', 'New', pic))
+            await db.execute('INSERT OR IGNORE INTO targets (user_id, name, status, last_seen, pic) VALUES (?,?,?,?,?)', 
+                             (e.id, getattr(e,'username',''), 'Checking...', 'New', pic))
             await db.commit()
     except: pass
     return redirect('/')
@@ -171,6 +166,7 @@ async def startup():
     app.add_background_task(tracker_loop)
 
 if __name__ == '__main__':
+    # Cloud Port Config (CRITICAL)
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-    
+                        
