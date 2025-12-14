@@ -1,7 +1,5 @@
-telethon
 quart
+telethon
 aiosqlite
 python-socks
-pytz
-aiohttp
 hypercorn
