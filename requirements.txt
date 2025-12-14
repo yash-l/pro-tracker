@@ -1,0 +1,7 @@
+telethon
+quart
+aiosqlite
+python-socks
+pytz
+aiohttp
+hypercorn
