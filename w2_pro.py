@@ -37,8 +37,9 @@ DEFAULT_CONFIG = {
     "is_setup_done": False
 }
 
+# Ensure folders exist
 os.makedirs(PIC_FOLDER, exist_ok=True)
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+logging.basicConfig(level=logging.INFO)
 
 # --- DATABASE ---
 async def init_db():
@@ -77,7 +78,7 @@ client = TelegramClient('session_pro', cfg['api_id'], cfg['api_hash'], proxy=PRO
 app = Quart(__name__, static_folder='static')
 app.secret_key = cfg['secret_key']
 
-# Fix cookies for Android/Cloud
+# Fix cookies for Cloud/Android
 app.config['SESSION_COOKIE_SECURE'] = False
 app.config['SESSION_COOKIE_HTTPONLY'] = True
 app.config['SESSION_COOKIE_SAMESITE'] = 'Lax'
@@ -152,12 +153,9 @@ async def download_pic(user_entity):
     return "default.png"
 
 async def tracker_loop():
-    # In cloud, setup might be done via env vars, but we keep this logic for safety
-    if not cfg['is_setup_done']: 
-        # Auto-create dummy file if config exists to allow cloud start
-        if os.path.exists(CONFIG_FILE): pass 
-        else: return 
-        
+    # If config file exists (uploaded to cloud), allow running
+    if not cfg['is_setup_done'] and not os.path.exists(CONFIG_FILE): return 
+    
     await client.start(phone=cfg['phone'])
     memory = {} 
     while True:
@@ -209,7 +207,6 @@ STYLE = """
     .input { width: 100%; padding: 14px; background: #020617; border: 1px solid #334155; border-radius: 12px; color: white; margin-bottom: 15px; font-size: 16px; }
     .btn { width: 100%; padding: 14px; background: #3b82f6; color: white; border: none; border-radius: 12px; font-weight: 600; cursor: pointer; font-size: 16px; margin-top: 10px; }
     .link { display: block; text-align: center; margin-top: 20px; color: #94a3b8; text-decoration: none; font-size: 0.9rem; }
-    .alert { background: rgba(239, 68, 68, 0.2); color: #fca5a5; padding: 12px; border-radius: 8px; margin-bottom: 20px; text-align: center; border: 1px solid rgba(239, 68, 68, 0.5); }
     .nav { display: flex; justify-content: space-between; align-items: center; padding: 15px 20px; border-bottom: 1px solid #334155; background: #0f172a; position: sticky; top: 0; z-index: 100; width: 100%; }
     .brand { font-size: 1.2rem; font-weight: 800; color: #f8fafc; text-decoration: none; display: flex; align-items: center; gap: 10px; }
     .container { padding: 20px; width: 100%; max-width: 800px; margin: 0 auto; }
@@ -230,8 +227,7 @@ STYLE = """
 
 PAGE_SETUP = """<!DOCTYPE html><html><head>""" + STYLE + """</head><body>
 <div class="auth-container"><div class="auth-card">
-    <div class="title">?? Initial Setup</div>
-    <p style="text-align:center; color:#94a3b8; margin-bottom:25px; font-size:0.9rem;">Create your admin account.</p>
+    <div class="title">🚀 Initial Setup</div>
     <form action="/do_setup" method="post">
         <input type="text" name="username" class="input" placeholder="Choose Username" required>
         <input type="password" name="password" class="input" placeholder="Choose Password" required>
@@ -241,128 +237,56 @@ PAGE_SETUP = """<!DOCTYPE html><html><head>""" + STYLE + """</head><body>
 
 PAGE_LOGIN = """<!DOCTYPE html><html><head>""" + STYLE + """</head><body>
 <div class="auth-container"><div class="auth-card">
-    <div class="title">?? Login</div>
-    {% if error %}<div class="alert">{{ error }}</div>{% endif %}
+    <div class="title">🔐 Login</div>
     <form action="/do_login" method="post">
         <input type="text" name="username" class="input" placeholder="Username" required>
         <input type="password" name="password" class="input" placeholder="Password" required>
         <button class="btn">Sign In</button>
     </form>
-    <a href="/forgot_password" class="link">Forgot Password?</a>
 </div></div></body></html>"""
 
-PAGE_FORGOT = """<!DOCTYPE html><html><head>""" + STYLE + """</head><body>
-<div class="auth-container"><div class="auth-card">
-    <div class="title">?? Recovery</div>
-    <p style="text-align:center; color:#94a3b8; font-size:0.9rem;">Enter the Recovery Key shown in your Termux console.</p>
-    <form action="/do_reset" method="post">
-        <input type="text" name="recovery_key" class="input" placeholder="Recovery Key" required>
-        <input type="password" name="new_password" class="input" placeholder="New Password" required>
-        <button class="btn" style="background:#10b981">Reset Password</button>
-    </form>
-    <a href="/login" class="link">Back to Login</a>
-</div></div></body></html>"""
-
-HTML_HEADER = """<!DOCTYPE html><html><head>""" + STYLE + """<script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head><body>
-<div class="nav">
-    <a href="/" class="brand"><i class="fas fa-radar"></i> ProTracker</a>
-    <div>
-        <a href="/profile" class="menu-icon"><i class="fas fa-user-circle"></i></a>
-        <a href="/logout" class="menu-icon"><i class="fas fa-sign-out-alt"></i></a>
-    </div>
-</div>"""
-
-PAGE_DASHBOARD = """
+PAGE_DASHBOARD = """<!DOCTYPE html><html><head>""" + STYLE + """</head><body>
+<div class="nav"><a href="/" class="brand"><i class="fas fa-radar"></i> ProTracker</a><div><a href="/logout" class="menu-icon"><i class="fas fa-sign-out-alt"></i></a></div></div>
 <div class="grid">
     {% for t in targets %}
     <a href="/target/{{ t.user_id }}" style="text-decoration:none; color:inherit;">
         <div class="card">
             <div class="row">
                 <img src="/static/profile_pics/{{ t.pic_path if t.pic_path else 'default.png' }}" class="avatar {{ 'online' if t.current_status == 'online' else '' }}">
-                <div>
-                    <div style="font-weight:700; font-size:1rem;">{{ t.display_name }}</div>
-                    <div class="status {{ 'online' if t.current_status == 'online' else '' }}">{{ t.current_status.upper() }}</div>
-                </div>
+                <div><div style="font-weight:700;">{{ t.display_name }}</div><div class="status {{ 'online' if t.current_status == 'online' else '' }}">{{ t.current_status.upper() }}</div></div>
             </div>
-            <div style="margin-top:15px; display:flex; justify-content:space-between; font-size:0.8rem; color:#94a3b8;">
-                <span>Last Seen</span><span style="color:white">{{ t.last_seen }}</span>
-            </div>
+            <div style="margin-top:15px; color:#94a3b8; font-size:0.8rem;">Last Seen: <span style="color:white">{{ t.last_seen }}</span></div>
         </div>
     </a>
-    {% else %}<div style="text-align:center; padding:40px; color:#94a3b8; grid-column: 1/-1;">No targets added.</div>{% endfor %}
+    {% else %}<div style="text-align:center; padding:40px; color:#94a3b8; width:100%;">No targets added.</div>{% endfor %}
 </div>
-<div class="spacer"></div>
 <a href="/settings" style="position:fixed; bottom:25px; right:25px; background:#3b82f6; width:55px; height:55px; border-radius:50%; display:flex; align-items:center; justify-content:center; font-size:1.5rem; color:white; text-decoration:none; box-shadow: 0 4px 15px rgba(59, 130, 246, 0.4);"><i class="fas fa-plus"></i></a>
-</body></html>
-"""
+</body></html>"""
 
-PAGE_DETAIL = """
-<div class="container">
-    <a href="/" style="color:#94a3b8; text-decoration:none;">&larr; Back to Dashboard</a>
-    <div class="card" style="margin-top:20px; display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:10px;">
-        <div class="row">
-            <img src="/static/profile_pics/{{ target.pic_path if target.pic_path else 'default.png' }}" class="avatar">
-            <div><h2 style="margin:0; font-size:1.2rem;">{{ target.display_name }}</h2><div style="color:#94a3b8; font-size:0.9rem;">@{{ target.username }}</div></div>
-        </div>
-        <div>
-             <a href="/export/{{ target.user_id }}" class="btn" style="width:auto; display:inline-block; padding:8px 12px; background:#10b981; margin-right:5px; margin-top:0;"><i class="fas fa-download"></i></a>
-             <a href="/delete/{{ target.user_id }}" class="btn" style="width:auto; display:inline-block; padding:8px 12px; background:#ef4444; margin-top:0;" onclick="return confirm('Delete?')"><i class="fas fa-trash"></i></a>
-        </div>
-    </div>
-    <div class="grid" style="grid-template-columns: 1fr 1fr; margin-top:0; padding:20px 0;">
-        <div class="card"><h3>AI Insight</h3><p style="color:#3b82f6; font-size:0.9rem;">{{ insight }}</p></div>
-        <div class="card"><h3>Status</h3><p style="font-size:0.9rem;">{{ target.current_status.upper() }} <br><span style="color:#94a3b8; font-size:0.8rem;">{{ target.last_seen }}</span></p></div>
-    </div>
-    <div class="card"><h3>Hourly Activity</h3><canvas id="userChart" style="max-height:200px; width:100%"></canvas></div>
-    <script>
-        new Chart(document.getElementById('userChart').getContext('2d'), {
-            type: 'bar',
-            data: { labels: Array.from({length:24},(_,i)=>i+':00'), datasets: [{ label: 'Sessions', data: {{ chart_data }}, backgroundColor: '#3b82f6', borderRadius: 4 }] },
-            options: { responsive: true, maintainAspectRatio: false, scales: { y: { beginAtZero: true, grid: { color: '#334155' } }, x: { grid: { display: false } } } }
-        });
-    </script>
-</div></body></html>
-"""
+PAGE_SETTINGS = """<!DOCTYPE html><html><head>""" + STYLE + """</head><body>
+<div class="container"><a href="/" style="color:#94a3b8; text-decoration:none;">&larr; Back</a>
+<div class="card" style="margin-top:20px;"><h3>Add Target</h3>
+<form action="/add_target" method="post">
+<input type="text" name="target_input" class="input" placeholder="Username, ID or Phone" required>
+<input type="text" name="display_name" class="input" placeholder="Name (Optional)">
+<button class="btn">Track</button>
+</form></div></div></body></html>"""
 
-PAGE_SETTINGS = """
-<div class="container">
-    <a href="/" style="display:block; margin-bottom:20px; color:#94a3b8; text-decoration:none;">&larr; Back</a>
-    <div class="card">
-        <h3>Add New Target</h3>
-        <form action="/add_target" method="post">
-            <label style="display:block; margin-bottom:5px; font-size:0.9rem; color:#94a3b8;">Username, ID, or Phone (+91...)</label>
-            <input type="text" name="target_input" class="input" placeholder="e.g. +919876543210 or rohit45" required>
-            <label style="display:block; margin-bottom:5px; font-size:0.9rem; color:#94a3b8;">Display Name (Optional)</label>
-            <input type="text" name="display_name" class="input" placeholder="e.g. Best Friend">
-            <button class="btn">Start Tracking</button>
-        </form>
-    </div>
-</div></body></html>
-"""
-
-PAGE_PROFILE = """
-<div class="container">
-    <a href="/" style="display:block; margin-bottom:20px; color:#94a3b8; text-decoration:none;">&larr; Back</a>
-    <div class="card">
-        <h3>Admin Profile</h3>
-        <form action="/update_profile" method="post">
-            <label style="color:#94a3b8; font-size:0.9rem;">Username</label>
-            <input type="text" name="username" value="{{ cfg.admin_username }}" class="input">
-            <label style="color:#94a3b8; font-size:0.9rem;">New Password</label>
-            <input type="password" name="password" class="input" placeholder="Leave empty to keep current">
-            <hr style="border-color:#334155; margin:20px 0;">
-            <label style="color:#94a3b8; font-size:0.9rem;">API ID</label>
-            <input type="text" name="api_id" value="{{ cfg.api_id }}" class="input">
-            <label style="color:#94a3b8; font-size:0.9rem;">Phone</label>
-            <input type="text" name="phone" value="{{ cfg.phone }}" class="input">
-            <button class="btn" style="background:#334155;">Save Changes</button>
-        </form>
-        <div style="margin-top:20px; padding:15px; background:rgba(16,185,129,0.1); border:1px solid #10b981; border-radius:12px; color:#10b981; font-size:0.9rem; word-break: break-all;">
-            <b>Recovery Key:</b><br>{{ cfg.recovery_key }}
-        </div>
-    </div>
-</div></body></html>
-"""
+PAGE_DETAIL = """<!DOCTYPE html><html><head>""" + STYLE + """<script src="https://cdn.jsdelivr.net/npm/chart.js"></script></head><body>
+<div class="container"><a href="/" style="color:#94a3b8; text-decoration:none;">&larr; Back</a>
+<div class="card" style="margin-top:20px;">
+<div class="row"><img src="/static/profile_pics/{{ target.pic_path if target.pic_path else 'default.png' }}" class="avatar"><div><h2>{{ target.display_name }}</h2></div></div>
+<div style="margin-top:15px;"><a href="/delete/{{ target.user_id }}" class="btn" style="background:#ef4444; width:auto; padding:8px 15px;">Delete</a></div>
+</div>
+<div class="card" style="margin-top:20px;"><h3>Hourly Activity</h3><canvas id="userChart" style="max-height:200px;"></canvas></div>
+<script>
+new Chart(document.getElementById('userChart').getContext('2d'), {
+    type: 'bar',
+    data: { labels: Array.from({length:24},(_,i)=>i+':00'), datasets: [{ label: 'Sessions', data: {{ chart_data }}, backgroundColor: '#3b82f6' }] },
+    options: { responsive: true, scales: { y: { beginAtZero: true } } }
+});
+</script>
+</div></body></html>"""
 
 # --- ROUTES ---
 @app.route('/setup')
@@ -383,8 +307,7 @@ async def do_setup():
     return redirect('/login')
 
 @app.route('/login')
-async def login():
-    return await render_template_string(PAGE_LOGIN, error=request.args.get('error'))
+async def login(): return PAGE_LOGIN
 
 @app.route('/do_login', methods=['POST'])
 async def do_login():
@@ -392,11 +315,64 @@ async def do_login():
     if form['username'] == cfg['admin_username'] and form['password'] == cfg['admin_password']:
         session['user'] = cfg['admin_username']
         return redirect('/')
-    return redirect(url_for('login', error="Invalid Credentials"))
+    return redirect('/login')
 
 @app.route('/logout')
 async def logout():
     session.clear()
     return redirect('/login')
 
-@app.ro
+@app.route('/')
+async def home():
+    async with aiosqlite.connect(DB_FILE) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM targets') as c: rows = await c.fetchall()
+    return await render_template_string(PAGE_DASHBOARD, targets=[dict(r) for r in rows])
+
+@app.route('/target/<int:uid>')
+async def target_detail(uid):
+    async with aiosqlite.connect(DB_FILE) as db:
+        db.row_factory = aiosqlite.Row
+        async with db.execute('SELECT * FROM targets WHERE user_id = ?', (uid,)) as c: target = await c.fetchone()
+    if not target: return redirect('/')
+    return await render_template_string(PAGE_DETAIL, target=dict(target), chart_data=await get_hourly_data(uid))
+
+@app.route('/settings')
+async def settings(): return PAGE_SETTINGS
+
+@app.route('/add_target', methods=['POST'])
+async def add_target():
+    form = await request.form
+    inp = form['target_input']
+    name = form.get('display_name') or inp
+    try:
+        if inp.startswith('+'):
+            c = await client(ImportContactsRequest([InputPhoneContact(0, inp, name, "")]))
+            e = c.users[0]
+        else:
+            e = await client.get_entity(int(inp) if inp.isdigit() else inp)
+        pic = await download_pic(e)
+        async with aiosqlite.connect(DB_FILE) as db:
+            await db.execute('INSERT OR IGNORE INTO targets (user_id, username, display_name, current_status, last_seen, pic_path) VALUES (?, ?, ?, ?, ?, ?)', 
+                             (e.id, getattr(e,'username',''), name, 'checking...', 'New', pic))
+            await db.commit()
+    except: pass
+    return redirect('/')
+
+@app.route('/delete/<int:uid>')
+async def delete_target(uid):
+    async with aiosqlite.connect(DB_FILE) as db:
+        await db.execute('DELETE FROM targets WHERE user_id = ?', (uid,))
+        await db.commit()
+    return redirect('/')
+
+@app.before_serving
+async def startup():
+    await init_db()
+    app.add_background_task(tracker_loop)
+
+if __name__ == '__main__':
+    # CLOUD PORT FIX
+    port = int(os.environ.get("PORT", 5000))
+    app.run(host='0.0.0.0', port=port)
+                    
