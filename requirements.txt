@@ -1,5 +1,0 @@
-quart
-telethon
-aiosqlite
-python-socks
-hypercorn
