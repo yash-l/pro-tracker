@@ -9,10 +9,9 @@ try:
     import aiosqlite
     import python_socks
     import hypercorn.asyncio
-    import pytz # Added check for pytz
+    import pytz 
 except ImportError:
     print("📦 Installing libraries... Please wait.")
-    # Added pytz to installation list
     os.system("pip install telethon quart aiosqlite python-socks hypercorn pytz")
     os.execv(sys.executable, ['python'] + sys.argv)
 
@@ -229,7 +228,9 @@ async def verify_otp():
 async def index():
     async with aiosqlite.connect(DB_FILE) as db:
         db.row_factory = aiosqlite.Row
-        async with db.execute('SELECT * FROM targets') as c: rows = await c.fetchall()
+        # SORTING LOGIC: Online users (0) first, then Name
+        async with db.execute("SELECT * FROM targets ORDER BY CASE WHEN status='online' THEN 0 ELSE 1 END, name ASC") as c: 
+            rows = await c.fetchall()
     
     html = ""
     for r in rows:
@@ -292,4 +293,4 @@ async def startup():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-        
+                        
