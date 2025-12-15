@@ -9,13 +9,14 @@ try:
     import aiosqlite
     import python_socks
     import hypercorn.asyncio
+    import pytz # Added check for pytz
 except ImportError:
     print("📦 Installing libraries... Please wait.")
-    os.system("pip install telethon quart aiosqlite python-socks hypercorn")
+    # Added pytz to installation list
+    os.system("pip install telethon quart aiosqlite python-socks hypercorn pytz")
     os.execv(sys.executable, ['python'] + sys.argv)
 
 from datetime import datetime
-import pytz
 
 # --- 2. CONFIGURATION ---
 API_ID = 9497762
