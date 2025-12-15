@@ -1,11 +1,11 @@
-import os, sys, asyncio, secrets, logging
+import os, sys, asyncio, secrets, logging, io, csv
 
 # --- 1. AUTO-INSTALLER ---
 try:
     from telethon import TelegramClient
     from telethon.sessions import StringSession
     from telethon.tl.types import UserStatusOnline
-    from quart import Quart, render_template_string, request, redirect, session
+    from quart import Quart, render_template_string, request, redirect, session, send_file, Response
     import aiosqlite
     import python_socks
     import hypercorn.asyncio
@@ -18,7 +18,6 @@ from datetime import datetime
 import pytz
 
 # --- 2. CONFIGURATION ---
-# (No Admin Password needed anymore)
 API_ID = 9497762
 API_HASH = "272c77bf080e4a82846b8ff3dc3df0f4"
 DB_FILE = 'tracker.db'
@@ -73,10 +72,10 @@ async def download_pic(user):
 
 # --- 6. TRACKER ENGINE ---
 async def tracker_loop():
-    # Attempt Auto-Login on Startup
+    # Attempt Auto-Login
     saved_key = await load_session_key()
     if saved_key:
-        print("🔄 Found saved session! logging in...")
+        print("🔄 Found saved session! Logging in...")
         try:
             state['client'] = TelegramClient(StringSession(saved_key), API_ID, API_HASH)
             await state['client'].connect()
@@ -86,13 +85,15 @@ async def tracker_loop():
         except Exception as e:
             print(f"❌ Auto-Login Failed: {e}")
 
-    # Wait for manual login if auto-login failed
+    # Wait for login
     while not state['logged_in']: await asyncio.sleep(2)
     
     memory = {}
     print("🚀 Tracker is RUNNING")
+    
     while True:
         try:
+            # Re-check connection
             if not state['client'] or not await state['client'].is_user_authorized():
                 state['logged_in'] = False; continue
 
@@ -108,15 +109,20 @@ async def tracker_loop():
                     now = get_time()
                     
                     if stat != memory.get(uid):
+                        # DB Update
                         async with aiosqlite.connect(DB_FILE) as db:
                             await db.execute('UPDATE targets SET status=?, last_seen=? WHERE user_id=?', (stat, now, uid))
                             if stat == 'online':
                                 await db.execute('INSERT INTO sessions (user_id, status, start) VALUES (?,?,?)', (uid, 'ONLINE', now))
+                                # 🔔 SEND ALERT TO SAVED MESSAGES
+                                try: await state['client'].send_message('me', f"🟢 <b>{name}</b> came ONLINE at {now}", parse_mode='html')
+                                except: pass
                             elif memory.get(uid) == 'online':
                                 await db.execute('UPDATE sessions SET end=? WHERE user_id=? AND end IS NULL', (now, uid))
                             await db.commit()
                         memory[uid] = stat
                     
+                    # Heartbeat Update
                     async with aiosqlite.connect(DB_FILE) as db:
                         await db.execute('UPDATE targets SET last_seen=? WHERE user_id=?', (now, uid))
                         await db.commit()
@@ -125,19 +131,73 @@ async def tracker_loop():
             await asyncio.sleep(4)
         except: await asyncio.sleep(5)
 
-# --- 7. ROUTES ---
-CSS = "body{background:#0f172a;color:#fff;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}.box{background:#1e293b;padding:30px;border-radius:20px;border:1px solid #334155;text-align:center;width:300px;box-shadow:0 10px 25px rgba(0,0,0,0.5)}input{width:100%;padding:12px;margin:10px 0;background:#020617;border:1px solid #334155;color:white;border-radius:8px;box-sizing:border-box}.btn{width:100%;padding:12px;background:#3b82f6;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer}.btn:hover{background:#2563eb}"
+# --- 7. UI & ROUTES ---
+TAILWIND = '<script src="https://cdn.tailwindcss.com"></script><style>body { background-color: #0f172a; font-family: "Inter", sans-serif; }</style>'
 
-P_LOGIN = f"<!doctype html><meta name='viewport' content='width=device-width'><style>{CSS}</style><div class='box'><h3>📱 User Login</h3><p style='color:#94a3b8'>Enter phone to start tracking.</p><form action='/send_otp' method='post'><input name='ph' placeholder='+91...' required><button class='btn'>Get Code</button></form></div>"
+P_LOGIN = f"""
+<!DOCTYPE html>
+<html class="dark">
+<head><meta name="viewport" content="width=device-width, initial-scale=1">{TAILWIND}</head>
+<body class="flex items-center justify-center min-h-screen text-white">
+    <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-700">
+        <h2 class="text-2xl font-bold text-center mb-6 text-cyan-400">⚡ ProTracker V17</h2>
+        <form action="/send_otp" method="post" class="space-y-4">
+            <div>
+                <label class="block text-sm text-slate-400 mb-1">Phone Number</label>
+                <input name="ph" placeholder="+91..." class="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 focus:outline-none focus:border-cyan-500 transition" required>
+            </div>
+            <button class="w-full bg-gradient-to-r from-cyan-500 to-blue-600 p-3 rounded-lg font-bold hover:opacity-90 transition">Get Code</button>
+        </form>
+    </div>
+</body></html>
+"""
 
-P_CODE = f"<!doctype html><meta name='viewport' content='width=device-width'><style>{CSS}</style><div class='box'><h3>🔑 Verify</h3><p style='color:#94a3b8'>Check Telegram App</p><form action='/verify_otp' method='post'><input name='code' placeholder='12345' required><button class='btn'>Verify & Save</button></form></div>"
+P_CODE = f"""
+<!DOCTYPE html>
+<html class="dark">
+<head><meta name="viewport" content="width=device-width, initial-scale=1">{TAILWIND}</head>
+<body class="flex items-center justify-center min-h-screen text-white">
+    <div class="bg-slate-800 p-8 rounded-2xl shadow-2xl w-full max-w-sm border border-slate-700">
+        <h2 class="text-xl font-bold text-center mb-2">🔐 Verify</h2>
+        <p class="text-slate-400 text-center text-sm mb-6">Check your Telegram App for the code</p>
+        <form action="/verify_otp" method="post" class="space-y-4">
+            <input name="code" placeholder="12345" class="w-full bg-slate-900 border border-slate-600 rounded-lg p-3 text-center tracking-widest text-lg focus:outline-none focus:border-green-500" required>
+            <button class="w-full bg-green-600 p-3 rounded-lg font-bold hover:bg-green-500 transition">Start Tracking</button>
+        </form>
+    </div>
+</body></html>
+"""
 
-P_DASH = f"<!doctype html><meta name='viewport' content='width=device-width'><style>{CSS} .row{{display:flex;justify-content:space-between;background:#334155;padding:12px;border-radius:8px;margin-bottom:10px;text-align:left}}</style><div class='box' style='width:95%;max-width:600px;display:block'><div style='display:flex;justify-content:space-between;margin-bottom:15px'><b>ProTracker</b><a href='/logout' style='color:#ef4444;text-decoration:none'>Logout</a></div><form action='/add' method='post' style='margin-bottom:20px;display:flex;gap:5px'><input name='u' placeholder='Username/ID' style='margin:0'><button class='btn' style='width:auto'>Add</button></form>{{ROWS}}</div>"
+P_DASH = f"""
+<!DOCTYPE html>
+<html class="dark">
+<head><meta name="viewport" content="width=device-width, initial-scale=1">{TAILWIND}</head>
+<body class="text-slate-200 pb-20">
+    <nav class="sticky top-0 z-50 bg-slate-900/80 backdrop-blur-md border-b border-slate-800 px-4 py-4 flex justify-between items-center">
+        <div class="font-bold text-xl tracking-tight bg-gradient-to-r from-cyan-400 to-purple-500 bg-clip-text text-transparent">ProTracker V17</div>
+        <a href="/logout" class="text-xs font-semibold text-red-400 hover:text-red-300">LOGOUT</a>
+    </nav>
+
+    <div class="max-w-2xl mx-auto p-4 space-y-6">
+        <div class="bg-slate-800 rounded-xl p-4 border border-slate-700 shadow-lg">
+            <form action="/add" method="post" class="flex gap-2">
+                <input name="u" placeholder="Username / ID" class="flex-1 bg-slate-900 border border-slate-600 rounded-lg p-3 text-sm focus:outline-none focus:border-cyan-500">
+                <button class="bg-cyan-600 px-6 rounded-lg font-bold hover:bg-cyan-500 transition">+</button>
+            </form>
+        </div>
+
+        <div class="grid gap-4">{{ROWS}}</div>
+        
+        <div class="text-center pt-8">
+            <a href="/download_db" class="text-sm text-slate-500 hover:text-white transition underline">Download All Logs (CSV)</a>
+        </div>
+    </div>
+</body></html>
+"""
 
 @app.before_request
 def guard():
     if request.path.startswith('/static'): return
-    # Removed Admin Password check. Only checking Telegram status.
     if not state['logged_in']:
         if request.path not in ['/tg_login', '/send_otp', '/verify_otp']: return redirect('/tg_login')
 
@@ -157,15 +217,9 @@ async def send_otp():
 
 @app.route('/verify_otp', methods=['POST'])
 async def verify_otp():
-    code = (await request.form)['code']
     try:
-        await state['client'].sign_in(state['phone'], code, phone_code_hash=state['phone_hash'])
-        
-        # --- AUTO-SAVE KEY ---
-        key_to_save = StringSession.save(state['client'].session)
-        await save_session_key(key_to_save)
-        # ---------------------
-        
+        await state['client'].sign_in(state['phone'], (await request.form)['code'], phone_code_hash=state['phone_hash'])
+        await save_session_key(StringSession.save(state['client'].session))
         state['logged_in'] = True
         return redirect('/')
     except Exception as e: return f"Error: {e} <a href='/tg_login'>Retry</a>"
@@ -175,8 +229,28 @@ async def index():
     async with aiosqlite.connect(DB_FILE) as db:
         db.row_factory = aiosqlite.Row
         async with db.execute('SELECT * FROM targets') as c: rows = await c.fetchall()
-    html = "".join([f"<div class='row'><div><b>{r['name']}</b><br><small style='color:#94a3b8'>{r['last_seen']}</small></div><span style='color:{'#4ade80' if r['status']=='online' else '#f87171'}'>{r['status'].upper()}</span></div>" for r in rows])
-    return render_template_string(P_DASH.replace("{{ROWS}}", html if html else "<p style='color:#94a3b8'>No targets added</p>"))
+    
+    html = ""
+    for r in rows:
+        status_color = "text-green-400" if r['status'] == 'online' else "text-slate-500"
+        border_color = "border-green-500/50" if r['status'] == 'online' else "border-slate-700"
+        bg_pulse = "bg-green-500/10" if r['status'] == 'online' else "bg-slate-800"
+        
+        html += f"""
+        <div class="{bg_pulse} p-4 rounded-xl border {border_color} flex items-center justify-between transition hover:scale-[1.01]">
+            <div class="flex items-center gap-4">
+                <img src="/static/profile_pics/{r['pic']}" class="w-12 h-12 rounded-full object-cover ring-2 ring-slate-700">
+                <div>
+                    <div class="font-bold text-lg text-white">{r['name']}</div>
+                    <div class="text-xs text-slate-400 font-mono">Last Seen: {r['last_seen']}</div>
+                </div>
+            </div>
+            <div class="text-right">
+                <div class="font-bold text-xs uppercase tracking-wider {status_color}">{r['status']}</div>
+            </div>
+        </div>
+        """
+    return render_template_string(P_DASH.replace("{{ROWS}}", html if html else "<div class='text-center text-slate-500 py-10'>No targets tracking</div>"))
 
 @app.route('/add', methods=['POST'])
 async def add():
@@ -189,6 +263,17 @@ async def add():
             await db.commit()
     except: pass
     return redirect('/')
+
+@app.route('/download_db')
+async def download_db():
+    async with aiosqlite.connect(DB_FILE) as db:
+        async with db.execute('SELECT * FROM sessions ORDER BY id DESC') as c: rows = await c.fetchall()
+    
+    si = io.StringIO()
+    cw = csv.writer(si)
+    cw.writerow(['ID', 'User ID', 'Status', 'Start Time', 'End Time', 'Duration'])
+    cw.writerows(rows)
+    return Response(si.getvalue(), mimetype='text/csv', headers={"Content-Disposition": "attachment; filename=tracker_logs.csv"})
 
 @app.route('/logout')
 async def logout():
@@ -205,4 +290,5 @@ async def startup():
 
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
-    app.run(host='0.0.0.0', port=port
+    app.run(host='0.0.0.0', port=port)
+        
