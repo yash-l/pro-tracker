@@ -18,7 +18,7 @@ from datetime import datetime
 import pytz
 
 # --- 2. CONFIGURATION ---
-ADMIN_PASSWORD = "admin" 
+# (No Admin Password needed anymore)
 API_ID = 9497762
 API_HASH = "272c77bf080e4a82846b8ff3dc3df0f4"
 DB_FILE = 'tracker.db'
@@ -41,11 +41,8 @@ app.secret_key = secrets.token_hex(16)
 # --- 4. DATABASE & SESSION STORAGE ---
 async def init_db():
     async with aiosqlite.connect(DB_FILE) as db:
-        # Targets Table
         await db.execute('CREATE TABLE IF NOT EXISTS targets (id INTEGER PRIMARY KEY, user_id INT UNIQUE, name TEXT, status TEXT, last_seen TEXT, pic TEXT)')
-        # Sessions Table (Logs)
         await db.execute('CREATE TABLE IF NOT EXISTS sessions (id INTEGER PRIMARY KEY, user_id INT, status TEXT, start TEXT, end TEXT, dur TEXT)')
-        # Config Table (Stores the Session Key)
         await db.execute('CREATE TABLE IF NOT EXISTS app_config (key TEXT PRIMARY KEY, value TEXT)')
         await db.commit()
 
@@ -131,8 +128,6 @@ async def tracker_loop():
 # --- 7. ROUTES ---
 CSS = "body{background:#0f172a;color:#fff;font-family:sans-serif;display:flex;justify-content:center;align-items:center;min-height:100vh;margin:0}.box{background:#1e293b;padding:30px;border-radius:20px;border:1px solid #334155;text-align:center;width:300px;box-shadow:0 10px 25px rgba(0,0,0,0.5)}input{width:100%;padding:12px;margin:10px 0;background:#020617;border:1px solid #334155;color:white;border-radius:8px;box-sizing:border-box}.btn{width:100%;padding:12px;background:#3b82f6;color:white;border:none;border-radius:8px;font-weight:bold;cursor:pointer}.btn:hover{background:#2563eb}"
 
-P_PASS = f"<!doctype html><meta name='viewport' content='width=device-width'><style>{CSS}</style><div class='box'><h3>🔒 Access Control</h3><form action='/login_pass' method='post'><input type='password' name='pw' placeholder='Admin Password' required><button class='btn'>Unlock</button></form></div>"
-
 P_LOGIN = f"<!doctype html><meta name='viewport' content='width=device-width'><style>{CSS}</style><div class='box'><h3>📱 User Login</h3><p style='color:#94a3b8'>Enter phone to start tracking.</p><form action='/send_otp' method='post'><input name='ph' placeholder='+91...' required><button class='btn'>Get Code</button></form></div>"
 
 P_CODE = f"<!doctype html><meta name='viewport' content='width=device-width'><style>{CSS}</style><div class='box'><h3>🔑 Verify</h3><p style='color:#94a3b8'>Check Telegram App</p><form action='/verify_otp' method='post'><input name='code' placeholder='12345' required><button class='btn'>Verify & Save</button></form></div>"
@@ -142,19 +137,9 @@ P_DASH = f"<!doctype html><meta name='viewport' content='width=device-width'><st
 @app.before_request
 def guard():
     if request.path.startswith('/static'): return
-    if 'auth' not in session and request.path not in ['/web_login', '/login_pass']: return redirect('/web_login')
-    if 'auth' in session and not state['logged_in']:
+    # Removed Admin Password check. Only checking Telegram status.
+    if not state['logged_in']:
         if request.path not in ['/tg_login', '/send_otp', '/verify_otp']: return redirect('/tg_login')
-
-@app.route('/web_login')
-async def web_login(): return P_PASS
-
-@app.route('/login_pass', methods=['POST'])
-async def login_pass():
-    if (await request.form)['pw'] == ADMIN_PASSWORD:
-        session['auth'] = True
-        return redirect('/') # Will redirect to tg_login if not logged in
-    return redirect('/web_login')
 
 @app.route('/tg_login')
 async def tg_login(): return P_LOGIN
@@ -210,9 +195,8 @@ async def logout():
     session.clear()
     state['logged_in'] = False
     state['client'] = None
-    # OPTIONAL: Delete key from DB on logout so next user must login
     await delete_session_key() 
-    return redirect('/web_login')
+    return redirect('/tg_login')
 
 @app.before_serving
 async def startup():
@@ -222,5 +206,4 @@ async def startup():
 if __name__ == '__main__':
     port = int(os.environ.get("PORT", 5000))
     app.run(host='0.0.0.0', port=port)
-
-                              
+    
