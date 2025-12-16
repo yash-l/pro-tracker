@@ -1,8 +1,8 @@
-telethon
 quart
+telethon
 aiosqlite
 python-socks
-hypercorn
 pytz
-httpx
-
+cryptography
+uvicorn
+aiohttp
