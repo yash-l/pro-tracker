@@ -70,7 +70,8 @@ async def loop():
 
 async def ping():
  while st.run:
-  try:async with httpx.AsyncClient() as h:await h.get(URL)
+  try:
+   async with httpx.AsyncClient() as h:await h.get(URL)
   except:pass
   await asyncio.sleep(600)
 
@@ -128,3 +129,4 @@ async def up():await boot();app.add_background_task(loop);app.add_background_tas
 async def down():st.run=0;await st.c.disconnect() if st.c else 0;await st.db.close() if st.db else 0
 
 if __name__=='__main__':c=Config();c.bind=[f"0.0.0.0:{int(os.getenv('PORT',5000))}"];asyncio.run(hypercorn.asyncio.serve(app,c))
+ 
