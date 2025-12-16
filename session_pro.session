@@ -1,0 +1,17 @@
+from telethon import TelegramClient
+
+# Your details from w1_web.py
+api_id = 9497762
+api_hash = "272c77bf080e4a82846b8ff3dc3df0f4"
+phone = "+918849404331"
+
+# This creates the session file name "session_pro"
+client = TelegramClient('session_pro', api_id, api_hash)
+
+async def main():
+    await client.start(phone=phone)
+    print("\n\nSUCCESS! 'session_pro.session' file created.")
+    print("Now upload this file to your GitHub repository.")
+
+with client:
+    client.loop.run_until_complete(main())
